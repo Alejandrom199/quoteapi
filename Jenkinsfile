@@ -50,15 +50,25 @@ pipeline {
         // ── Stage 3: Probar que la imagen arranca (smoke test) ──
         stage('Smoke test de la imagen') {
             steps {
-                // Levanta la imagen, espera, verifica el health, y la apaga
+                // Levantamos el contenedor (no hace falta exponer el puerto al host con -p)
                 sh """
-                    docker run -d --name quote-smoke -p 8090:8080 ${IMAGEN}:${TAG}
+                    docker run -d --name quote-smoke ${IMAGEN}:${TAG}
                     sleep 5
-                    curl -f http://localhost:8090/health || exit 1
+                    
+                    # Extraemos la IP interna del contenedor
+                    CONTAINER_IP=\$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' quote-smoke)
+                    
+                    # Hacemos curl directo a la IP interna y puerto original (8080)
+                    curl -f http://\$CONTAINER_IP:8080/health || {
+                        echo "❌ El healthcheck falló. Mostrando logs del contenedor para debug:"
+                        docker logs quote-smoke
+                        exit 1
+                    }
+                    
                     docker stop quote-smoke
                     docker rm quote-smoke
                 """
-                echo 'La imagen arranca y responde correctamente'
+                echo '✅ La imagen arranca y responde correctamente'
             }
         }
 
